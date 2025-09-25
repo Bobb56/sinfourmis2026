@@ -1,0 +1,18 @@
+start:
+  - [1000, 540]
+  - [1800, 60]
+  - [1500, 1000]
+
+objects:
+  - type: tree
+    position: [100, 500]
+    
+  - type: tower
+    position: [1000, 900]
+    
+  - type: rock
+    position: [100, 100]
+    
+  - type: tree
+    position: [1800, 500]
+

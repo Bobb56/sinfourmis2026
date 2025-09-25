@@ -1,0 +1,51 @@
+- name: "Tank bleu"
+  program: "raphael.py"
+  color: blue
+
+- name: "Tank rouge"
+  program: "raphael.py"
+  color: red
+
+- name: "Tank vert"
+  program: "raphael.py"
+  color: green
+
+- name: "Tank jaune"
+  program: "raphael.py"
+  color: yellow
+
+- name: "Tank orange"
+  program: "raphael.py"
+  color: orange
+
+- name: "Tank rouge 2"
+  program: "raphael.py"
+  color: red
+
+- name: "Tank vert 2"
+  program: "raphael.py"
+  color: green
+
+- name: "Tank jaune 2"
+  program: "raphael.py"
+  color: yellow
+
+- name: "Tank orange 2"
+  program: "raphael.py"
+  color: orange
+
+- name: "Tank rouge 3"
+  program: "raphael.py"
+  color: red
+
+- name: "Tank vert 3"
+  program: "raphael.py"
+  color: green
+
+- name: "Tank jaune 3"
+  program: "raphael.py"
+  color: yellow
+
+- name: "Tank orange 3"
+  program: "raphael.py"
+  color: orange

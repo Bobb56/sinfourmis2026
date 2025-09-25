@@ -1,0 +1,8 @@
+start:
+    - [50, 480],
+    - [60, 60],
+    - [1500, 1000]
+
+objects:
+    - type: tower
+      position: [1000, 500]
