@@ -33,8 +33,9 @@ def make_func(function, request, clock):
             def call(self, *args, **kwargs):
                 return self.__function(self.__request, self.__clock, *args, *kwargs)"""
     
-    exec(code)
-    obj_call = eval(name + '(function, request, clock)').call
+    namespace = {}
+    exec(code, namespace)
+    obj_call = namespace[name](function, request, clock).call
 
     def func(*args):
         return obj_call(*args)
@@ -388,6 +389,7 @@ class Game:
 
         self.screen = pygame.display.set_mode(flags=pygame.FULLSCREEN)
         pygame.display.set_caption("RoboTank")
+        pygame.display.flip()
 
         # Charger et redimensionner l'image de fond
         self.background = pygame.image.load(os.path.join('assets', 'background.png')).convert()
@@ -541,6 +543,7 @@ class Game:
 
 
     def countdown(self):
+        
         self.draw_text("Êtes vous prêts ?")
         pygame.display.flip()
 

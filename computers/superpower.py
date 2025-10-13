@@ -67,15 +67,16 @@ def winner():
 
 
 def main():
+    teleport(960, 540)
     while True:
-        enemy = get_enemy()
-        teleport(*enemy)
+        #enemy = get_enemy()
+        #teleport(*enemy)
         ultrafire2()
         invincible()
         time.sleep(1)
 
         if winner():
-            teleport(960, 700)
+            teleport(960, 540)
             while True:
                 move()
                 rotateRight()
