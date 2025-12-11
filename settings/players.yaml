@@ -1,5 +1,5 @@
 - name: "Tank bleu"
-  program: "superpower.py"
+  program: "raphael.py"
   color: blue
 
 - name: "Tank rouge"

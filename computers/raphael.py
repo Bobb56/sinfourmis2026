@@ -435,6 +435,8 @@ def take_box():
                 x,y = locate('box') # on en prend une nouvelle
             else:
                 x,y = coord
+    
+    add_wall()
 
 
 
@@ -458,6 +460,8 @@ def try_box():
                 x,y = locate('box') # on en prend une nouvelle
             else:
                 x,y = coord
+    
+    add_wall()
 
 
 

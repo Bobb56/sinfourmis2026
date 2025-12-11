@@ -1,12 +1,12 @@
-import pygame
-import yaml
-import sys
 import os
+import sys
+import yaml
 import math
+import time
+import pygame
+import random
 import threading
 import multiprocessing
-import random
-import time
 
 
 
@@ -47,11 +47,19 @@ def make_func(function, request, clock):
 
 
 class Item:
-    def __init__(self, xpos, ypos, type, image):
+    def __init__(self, xpos, ypos, type, image, box_type):
         self.xpos = xpos
         self.ypos = ypos
         self.image = image
         self.type = type
+        self.box_type = box_type
+        
+        if type == 'tree':
+            self.ttl = 1
+        elif type == 'wall':
+            self.ttl = 10
+        else:
+            self.ttl = math.inf
     
     def __eq__(self, obj):
         return type(obj) == Item and (self.xpos, self.ypos, self.type) == (obj.xpos, obj.ypos, obj.type)
@@ -59,6 +67,7 @@ class Item:
     def display(self, game):
         rect = self.image.get_rect(center = game.nc(self.xpos,self.ypos))
         game.screen.blit(self.image, rect.topleft)
+
 
 
 class Bullet:
@@ -93,6 +102,7 @@ class Tank:
         self.ypos = ypos
         self.file = file
         self.nb_bullets = 200
+        self.nb_bricks = 0
         self.orientation = random.randint(0,360)
         self.health = 100
         self.image = image
@@ -145,17 +155,20 @@ class Request:
     def validate_position(self, xp, yp, x, y):
         return self.make_request("validatePosition", xp, yp, x, y)
 
-    def getState(self): # renvoie un tuple (xpos, ypos, orientation, health, nb_bullets, lastshot)
+    def getState(self): # renvoie un tuple (xpos, ypos, orientation, health, nb_bullets, nb_bricks, lastshot)
         return self.make_request("getState")
     
-    def setState(self, xpos, ypos, orientation, health, nb_bullets, lastshot): # attend en argument un tuple (xpos, ypos, orientation, health, nb_bullets)
-        return self.make_unidirectional_request("setState", xpos, ypos, orientation, health, nb_bullets, lastshot)
+    def setState(self, xpos, ypos, orientation, health, nb_bullets, nb_bricks, lastshot): # attend en argument un tuple (xpos, ypos, orientation, health, nb_bullets)
+        return self.make_unidirectional_request("setState", xpos, ypos, orientation, health, nb_bullets, nb_bricks, lastshot)
     
     def addBullet(self, x, y, orientation, ttl = 30):
         return self.make_unidirectional_request("addBullet", x, y, orientation, ttl)
     
     def removeBox(self, x, y):
         return self.make_unidirectional_request("removeBox", x, y)
+    
+    def addWall(self, x, y):
+        return self.make_unidirectional_request("addWall", x, y)
     
     def getItems(self):
         return self.make_request("getItems")
@@ -188,26 +201,30 @@ def serverFunction(requestEnd, responseEntry, game, name):
         args = request[1:]
 
         if opcode == "getState":
-            ret = (tank.xpos, tank.ypos, tank.orientation, tank.health, tank.nb_bullets, tank.lastshot)
+            ret = (tank.xpos, tank.ypos, tank.orientation, tank.health, tank.nb_bullets, tank.nb_bricks, tank.lastshot)
             responseEntry.send(ret)
         
         elif opcode == "setState":
-            tank.xpos, tank.ypos, tank.orientation, tank.health, tank.nb_bullets, tank.lastshot = args
+            tank.xpos, tank.ypos, tank.orientation, tank.health, tank.nb_bullets, tank.nb_bricks, tank.lastshot = args
 
         elif opcode == "addBullet":
             xpos, ypos, orientation, ttl = args
             game.bullets.append(Bullet(xpos, ypos, orientation, name, game.bullet_image, ttl))
         
+        elif opcode == "addWall":
+            xpos, ypos = args
+            game.items.append(Item(xpos, ypos, 'wall', game.item_images['wall'], None))
+        
         elif opcode == "removeBox":
-            x, y = args
-            i = 0
-            while game.items[i].type != 'box' and (game.items[i].xpos, game.items[i].ypos) != (x, y):
-                i += 1
-            
-            del game.items[i]
+            x, y = args            
+            for i, it in enumerate(game.items):
+                if it.type == 'box' and (it.xpos, it.ypos) == (x, y):
+                    del game.items[i]
+                    break
+
             
         elif opcode == "getItems":
-            responseEntry.send([Item(item.xpos, item.ypos, item.type, None) for item in game.items])
+            responseEntry.send([Item(item.xpos, item.ypos, item.type, None, item.box_type) for item in game.items])
             
         elif opcode == "getTanks":
             responseEntry.send([Tank(tank.xpos, tank.ypos, None, None, tank.name) for tank in game.tanks.values()])
@@ -241,6 +258,7 @@ def load_item_images(): # renvoie la liste des sprites nécessaires au dessin de
     images['tower'] = pygame.image.load(os.path.join('assets', 'tower.png')).convert_alpha()
     images['bullet'] = pygame.image.load(os.path.join('assets', 'bullet.png')).convert_alpha()
     images['box'] = pygame.image.load(os.path.join('assets', 'box.png')).convert_alpha()
+    images['wall'] = pygame.image.load(os.path.join('assets', 'wall.png')).convert_alpha()
     return images
 
 
@@ -293,8 +311,11 @@ def collision(x,y,obj):
     elif obj.type == 'rock':
         return distance(x, y, xo, yo) < 35
     
-    if obj.type == 'tower':
+    elif obj.type == 'tower':
         return distance(x, y, xo, yo) < 55
+    
+    elif obj.type == 'wall':
+        return distance(x, y, xo, yo) < 20
     
     return False
 
@@ -351,9 +372,9 @@ def read_map(map):
     item_images = load_item_images()
 
     for object in map_data['objects']:
-        items.append(Item(object['position'][0], object['position'][1], object['type'], item_images[object['type']]))
+        items.append(Item(object['position'][0], object['position'][1], object['type'], item_images[object['type']], None))
     
-    return items, map_data['start']
+    return items, map_data['start'], item_images
 
 
 def load_tanks(players, start_pos, get_free_coord):
@@ -396,7 +417,7 @@ class Game:
         self.background = pygame.transform.scale(self.background, (self.screen_width, self.screen_height))
 
         # Initialisation des objets
-        self.items, start_pos = read_map(map)
+        self.items, start_pos, self.item_images = read_map(map)
 
         # Initialisation des tanks
         self.tanks = {}
@@ -438,13 +459,15 @@ class Game:
     def add_box(self):
         x, y = self.get_free_coord()
         # on a récupéré les coordonées de la caisse
-        self.items.append(Item(x, y, 'box', self.box_image))
+        box_type = random.choice(['bullets', 'bricks'])
+        self.items.append(Item(x, y, 'box', self.box_image, box_type))
 
 
     def update_objects(self, tankname, x, y): # enlève les objets que rencontre le projectile. Si le projectile en a rencontrés, la fonction renvoie True
         for obj in self.items:            
             if collision(x,y,obj):
-                if obj.type == 'tree': # l'arbre disparait
+                obj.ttl -= 1
+                if obj.ttl < 0: # l'objet disparait
                     self.items.remove(obj)
                 
                 return True
@@ -600,6 +623,7 @@ class Game:
                 "rotateRight":      make_func(rotateRight, request, self.clock),
                 "rotateLeft":       make_func(rotateLeft, request, self.clock),
                 "grab_box":         make_func(grab_box, request, self.clock),
+                "add_wall":        make_func(add_wall, request, self.clock),
                 "detect":           make_func(detect, request, self.clock),
                 "distance":         distance,
                 "time":             time,
@@ -624,14 +648,14 @@ elles utilisent des pipes pour communiquer avec leur thread serveur
 '''
 
 def get_position(request, clock):
-    xpos, ypos, _, health, _, _ = request.getState()
+    xpos, ypos, _, health, _, _, _ = request.getState()
     request.stop_thread_if_necessary(health)
     return xpos, ypos
     
 
 
 def get_orientation(request, clock):
-    _, _, orientation, health, _, _ = request.getState()
+    _, _, orientation, health, _, _, _ = request.getState()
     request.stop_thread_if_necessary(health)
     return orientation
     
@@ -639,14 +663,14 @@ def get_orientation(request, clock):
 
 # bibliothèque de déplacement des joueurs
 def move(request, clock):    
-    x, y, theta, health, nb_bullets, lastshot = request.getState()
+    x, y, theta, health, nb_bullets, nb_bricks, lastshot = request.getState()
     request.stop_thread_if_necessary(health)
 
     dop = 3
     dx = math.cos(theta/180*math.pi) * dop
     dy = -math.sin(theta/180*math.pi) * dop
     if request.validate_position(x, y, x+dx, y+dy): # permet de tester les collisions
-        request.setState(x+dx, y+dy, theta, health, nb_bullets, lastshot)
+        request.setState(x+dx, y+dy, theta, health, nb_bullets, nb_bricks, lastshot)
     
     clock.tick(60)
     
@@ -656,14 +680,14 @@ def move(request, clock):
 
 
 def back(request, clock):    
-    x, y, theta, health, nb_bullets, lastshot = request.getState()
+    x, y, theta, health, nb_bullets, nb_bricks, lastshot = request.getState()
     request.stop_thread_if_necessary(health)
 
     dop = -1
     dx = math.cos(theta/180*math.pi) * dop
     dy = -math.sin(theta/180*math.pi) * dop
     if request.validate_position(x, y, x+dx, y+dy): # permet de tester les collisions
-        request.setState(x+dx, y+dy, theta, health, nb_bullets, lastshot)
+        request.setState(x+dx, y+dy, theta, health, nb_bullets, nb_bricks, lastshot)
     
     clock.tick(200)
     
@@ -671,7 +695,7 @@ def back(request, clock):
 
 
 def rotateRight(request, clock):    
-    x, y, theta, health, nb_bullets, lastshot = request.getState()
+    x, y, theta, health, nb_bullets, nb_bricks, lastshot = request.getState()
     request.stop_thread_if_necessary(health)
 
     dtheta = 1
@@ -679,7 +703,7 @@ def rotateRight(request, clock):
     if theta < 0:
         theta += 360
     
-    request.setState(x, y, theta, health, nb_bullets, lastshot)
+    request.setState(x, y, theta, health, nb_bullets, nb_bricks, lastshot)
 
     clock.tick(250)
     
@@ -687,7 +711,7 @@ def rotateRight(request, clock):
 
 
 def rotateLeft(request, clock):
-    x, y, theta, health, nb_bullets, lastshot = request.getState()
+    x, y, theta, health, nb_bullets, nb_bricks, lastshot = request.getState()
     request.stop_thread_if_necessary(health)
 
     dtheta = 1
@@ -695,7 +719,7 @@ def rotateLeft(request, clock):
     if theta > 360:
         theta -= 360
     
-    request.setState(x, y, theta, health, nb_bullets, lastshot)
+    request.setState(x, y, theta, health, nb_bullets, nb_bricks, lastshot)
 
     clock.tick(250)
     
@@ -703,20 +727,20 @@ def rotateLeft(request, clock):
 
 
 def fire(request, clock):
-    x, y, theta, health, nb_bullets, lastshot = request.getState()
+    x, y, theta, health, nb_bullets, nb_bricks, lastshot = request.getState()
     request.stop_thread_if_necessary(health)
 
     if nb_bullets <= 0 or time.monotonic() - lastshot < 0.3 :
         return # on ne peut plus tirer, il n'y a plus de projectiles
     
-    request.setState(x, y, theta, health, nb_bullets - 1, time.monotonic())
+    request.setState(x, y, theta, health, nb_bullets - 1, nb_bricks, time.monotonic())
     request.addBullet(x, y, theta)
 
 
 
 
 def detect(request, clock): # chaque tank est doté d'un capteur qui pointe devant lui et renvoie une liste des objets rencontrés et leur distance
-    x, y, theta, health, _, _ = request.getState()
+    x, y, theta, health, _, _, _ = request.getState()
     request.stop_thread_if_necessary(health)
 
     items = request.getItems()
@@ -741,7 +765,7 @@ def detect(request, clock): # chaque tank est doté d'un capteur qui pointe deva
 
 
 def grab_box(request, clock):    
-    xpos, ypos, theta, health, nb_bullets, lastshot = request.getState()
+    xpos, ypos, theta, health, nb_bullets, nb_bricks, lastshot = request.getState()
     request.stop_thread_if_necessary(health)
 
     items = request.getItems()
@@ -749,10 +773,24 @@ def grab_box(request, clock):
     for obj in items:
         if obj.type == 'box' and distance(xpos, ypos, obj.xpos, obj.ypos) < 20: # la boite peut être attrapée
             request.removeBox(obj.xpos, obj.ypos)
-            request.setState(xpos, ypos, theta, health, nb_bullets + 200, lastshot)
+            if obj.box_type == 'bullets':
+                request.setState(xpos, ypos, theta, health, nb_bullets + 200, nb_bricks, lastshot)
+            elif obj.box_type == 'bricks':
+                request.setState(xpos, ypos, theta, health, nb_bullets, nb_bricks + 20, lastshot)
             return True
     
     return False
+
+
+def add_wall(request, clock):    
+    xpos, ypos, theta, health, nb_bullets, nb_bricks, lastshot = request.getState()
+    request.stop_thread_if_necessary(health)
+    
+    if nb_bricks > 0:
+        dx = math.cos(theta/180*math.pi) * 50
+        dy = -math.sin(theta/180*math.pi) * 50
+        request.setState(xpos, ypos, theta, health, nb_bullets, nb_bricks - 1, lastshot)
+        request.addWall(xpos + dx, ypos + dy)
     
 
 
@@ -772,7 +810,7 @@ def main():
     running = True
 
     t0 = time.monotonic()
-    apparition_box = 40 # temps d'apparition des caisses
+    apparition_box = 4 # temps d'apparition des caisses
 
     while running:# and game.nb_alive() > 1:
         for event in pygame.event.get():
