@@ -50,14 +50,14 @@ def backward(dist):
 def turnRight(angle):
     angle = (get_orientation() - angle)%360
     while abs(angle - get_orientation())%360 > 2:
-        rotateRight()
+        rotate_right()
         defend()
 
 
 def turnLeft(angle):
     angle = (get_orientation() + angle)%360
     while abs(angle - get_orientation())%360 > 2:
-        rotateLeft()
+        rotate_left()
         defend()
 
 
@@ -70,13 +70,13 @@ def obstacle():
     
     # pour détecter les murs
     if angle <= 90 and (x > 1880 or y < 30):
-        return 'wall'
+        return 'limit'
     if angle >= 90 and angle <= 180 and (x < 30 or y < 30):
-        return 'wall'
+        return 'limit'
     if angle >= 180 and angle <= 270 and (x < 30 or y > 1050):
-        return 'wall'
+        return 'limit'
     if angle >= 270 and angle <= 360 and (x > 1880 or y > 1050):
-        return 'wall'
+        return 'limit'
     
     
     # regarde s'il y a un objet trop près
@@ -106,14 +106,16 @@ def orienter(theta):
         diff += 360
     if diff >= 180:
         while abs(theta - get_orientation())%360 > 2:
-            rotateRight()
+            rotate_right()
             defend()
-        rotateRight()
+        rotate_right()
+        rotate_right()
     else:
         while abs(theta - get_orientation())%360 > 2:
-            rotateLeft()
+            rotate_left()
             defend()
-        rotateLeft()
+        rotate_left()
+        rotate_left()
 
 
 
@@ -182,7 +184,7 @@ def contourner_obstacle():
     if not t:
         return
     
-    if t == 'wall':
+    if t == 'limit':
         n = random.randint(0,2)
         
         if n == 0:
@@ -214,6 +216,7 @@ def contourner_obstacle():
             'tower' : (100, 160),
             'tree' : (70, 120),
             'rock' : (70, 140),
+            'wall' : (70, 70)
         }
         
         # on recule
@@ -315,19 +318,19 @@ def locate_one_time(obj, dist):
         vision_function = lambda obj : in_vision_dist(obj, dist)
     
     theta0 = get_orientation()
-    rotateRight()
+    rotate_right()
     while abs(theta0 - get_orientation())%360 > 2 and not vision_function(obj):
-        rotateRight()
+        rotate_right()
         defend()
     
     delta_theta = 0
     while vision_function(obj):
-        rotateRight()
+        rotate_right()
         defend()
         delta_theta += 1
     
     for i in range(int(delta_theta/2)):
-        rotateLeft()
+        rotate_left()
         defend()
     
     d = vision_function(obj)
@@ -354,7 +357,7 @@ def locate(obj):
 def scan_map(): # fonction qui renvoie des tuples de type (orientation, objet, distance) pour toutes les orientations et tous les objets
     objects = []
     angle_0 = get_orientation()
-    rotateLeft()
+    rotate_left()
     while abs(get_orientation() - angle)%360 > 2:
         defend()
         l = detect()
@@ -362,7 +365,7 @@ def scan_map(): # fonction qui renvoie des tuples de type (orientation, objet, d
             l[i] = (get_orientation(), l[i][0], l[i][1])
         objects += l
         
-        rotateLeft()
+        rotate_left()
     
     return objects
 
@@ -400,14 +403,14 @@ def tourelle(index, delta_t):
     
     while time.monotonic() - t0 < delta_t:
         for i in range(55):
-            rotateRight()
+            rotate_right()
             tirer(0.05)
         
         fire()
         time.sleep(1)
         
         for i in range(55):
-            rotateLeft()
+            rotate_left()
             tirer(0.05)
         fire()
 
@@ -415,7 +418,7 @@ def tourelle(index, delta_t):
 def pivot(delta_t):
     t0 = time.monotonic()
     while time.monotonic() - t0 < delta_t:
-        rotateRight()
+        rotate_right()
         defend()
 
 
@@ -435,8 +438,6 @@ def take_box():
                 x,y = locate('box') # on en prend une nouvelle
             else:
                 x,y = coord
-    
-    add_wall()
 
 
 
@@ -461,8 +462,6 @@ def try_box():
             else:
                 x,y = coord
     
-    add_wall()
-
 
 
 def new_spot():
@@ -513,6 +512,17 @@ def strat3():
         pivot(random.randint(0, 20))
 
 
-#strat1()
-#strat2()
-strat3()
+def strat4():
+    while get_nb_bricks() < 60:
+        take_box()
+    
+    goto(500, 500)
+
+    for i in range(60):
+        orienter(90)
+        add_wall()
+        orienter(0)
+        forward(30)
+
+
+strat4()

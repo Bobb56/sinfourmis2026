@@ -47,12 +47,13 @@ def make_func(function, request, clock):
 
 
 class Item:
-    def __init__(self, xpos, ypos, type, image, box_type):
+    def __init__(self, xpos, ypos, orientation, type, image, box_type):
         self.xpos = xpos
         self.ypos = ypos
         self.image = image
         self.type = type
         self.box_type = box_type
+        self.orientation = orientation
         
         if type == 'tree':
             self.ttl = 1
@@ -65,8 +66,9 @@ class Item:
         return type(obj) == Item and (self.xpos, self.ypos, self.type) == (obj.xpos, obj.ypos, obj.type)
     
     def display(self, game):
-        rect = self.image.get_rect(center = game.nc(self.xpos,self.ypos))
-        game.screen.blit(self.image, rect.topleft)
+        rotated_image = pygame.transform.rotate(self.image, self.orientation)
+        rect = rotated_image.get_rect(center = game.nc(self.xpos,self.ypos))
+        game.screen.blit(rotated_image, rect.topleft)
 
 
 
@@ -167,8 +169,8 @@ class Request:
     def removeBox(self, x, y):
         return self.make_unidirectional_request("removeBox", x, y)
     
-    def addWall(self, x, y):
-        return self.make_unidirectional_request("addWall", x, y)
+    def addWall(self, x, y, theta):
+        return self.make_unidirectional_request("addWall", x, y, theta)
     
     def getItems(self):
         return self.make_request("getItems")
@@ -212,8 +214,8 @@ def serverFunction(requestEnd, responseEntry, game, name):
             game.bullets.append(Bullet(xpos, ypos, orientation, name, game.bullet_image, ttl))
         
         elif opcode == "addWall":
-            xpos, ypos = args
-            game.items.append(Item(xpos, ypos, 'wall', game.item_images['wall'], None))
+            xpos, ypos, theta = args
+            game.items.append(Item(xpos, ypos, theta, 'wall', game.item_images['wall'], None))
         
         elif opcode == "removeBox":
             x, y = args            
@@ -224,7 +226,7 @@ def serverFunction(requestEnd, responseEntry, game, name):
 
             
         elif opcode == "getItems":
-            responseEntry.send([Item(item.xpos, item.ypos, item.type, None, item.box_type) for item in game.items])
+            responseEntry.send([Item(item.xpos, item.ypos, item.orientation, item.type, None, item.box_type) for item in game.items])
             
         elif opcode == "getTanks":
             responseEntry.send([Tank(tank.xpos, tank.ypos, None, None, tank.name) for tank in game.tanks.values()])
@@ -372,7 +374,11 @@ def read_map(map):
     item_images = load_item_images()
 
     for object in map_data['objects']:
-        items.append(Item(object['position'][0], object['position'][1], object['type'], item_images[object['type']], None))
+        if 'orientation' in object:
+            orientation = object['orientation']
+        else:
+            orientation = 0
+        items.append(Item(object['position'][0], object['position'][1], orientation, object['type'], item_images[object['type']], None))
     
     return items, map_data['start'], item_images
 
@@ -423,6 +429,8 @@ class Game:
         self.tanks = {}
         self.tanks = load_tanks(players, start_pos, self.get_free_coord)
 
+        self.nb_players = len(self.tanks)
+
         # Liste de tous les projectiles actuellement sur l'écran
         self.bullets = []
 
@@ -451,16 +459,18 @@ class Game:
         return True
     
     def get_free_coord(self):
-        x,y = random.randint(0, 1919), random.randint(0, 1079)
+        xmin, xmax, ymin, ymax = 10, self.screen_width - 10, 10, self.screen_height - 10
+        x,y = random.randint(xmin, xmax), random.randint(ymin, ymax)
         while not self.validate_position(x,y,x,y):
-            x,y = random.randint(0, self.screen_width), random.randint(0, self.screen_height)
+            x,y = random.randint(xmin, xmax), random.randint(ymin, ymax)
         return x, y
 
     def add_box(self):
         x, y = self.get_free_coord()
+        orientation = random.randint(0, 360)
         # on a récupéré les coordonées de la caisse
         box_type = random.choice(['bullets', 'bricks'])
-        self.items.append(Item(x, y, 'box', self.box_image, box_type))
+        self.items.append(Item(x, y, orientation, 'box', self.box_image, box_type))
 
 
     def update_objects(self, tankname, x, y): # enlève les objets que rencontre le projectile. Si le projectile en a rencontrés, la fonction renvoie True
@@ -541,7 +551,7 @@ class Game:
         return c
     
     def winner(self):
-        if self.nb_alive() != 1:
+        if self.nb_alive() != 1 or self.nb_players < 2:
             return None
         else:
             for tank in self.tanks.values():
@@ -618,12 +628,14 @@ class Game:
                 "fire":             make_func(fire, request, self.clock),
                 "get_position":     make_func(get_position, request, self.clock),
                 "get_orientation":  make_func(get_orientation, request, self.clock),
+                "get_nb_bullets":   make_func(get_nb_bullets, request, self.clock),
+                "get_nb_bricks":    make_func(get_nb_bricks, request, self.clock),
                 "move":             make_func(move, request, self.clock),
                 "back":             make_func(back, request, self.clock),
-                "rotateRight":      make_func(rotateRight, request, self.clock),
-                "rotateLeft":       make_func(rotateLeft, request, self.clock),
+                "rotate_right":     make_func(rotate_right, request, self.clock),
+                "rotate_left":      make_func(rotate_left, request, self.clock),
                 "grab_box":         make_func(grab_box, request, self.clock),
-                "add_wall":        make_func(add_wall, request, self.clock),
+                "add_wall":         make_func(add_wall, request, self.clock),
                 "detect":           make_func(detect, request, self.clock),
                 "distance":         distance,
                 "time":             time,
@@ -658,7 +670,17 @@ def get_orientation(request, clock):
     _, _, orientation, health, _, _, _ = request.getState()
     request.stop_thread_if_necessary(health)
     return orientation
-    
+
+def get_nb_bricks(request, clock):
+    _, _, _, health, _, nb_bricks, _ = request.getState()
+    request.stop_thread_if_necessary(health)
+    return nb_bricks
+
+
+def get_nb_bullets(request, clock):
+    _, _, _, health, nb_bullets, _, _ = request.getState()
+    request.stop_thread_if_necessary(health)
+    return nb_bullets
 
 
 # bibliothèque de déplacement des joueurs
@@ -694,7 +716,7 @@ def back(request, clock):
 
 
 
-def rotateRight(request, clock):    
+def rotate_right(request, clock):    
     x, y, theta, health, nb_bullets, nb_bricks, lastshot = request.getState()
     request.stop_thread_if_necessary(health)
 
@@ -710,7 +732,7 @@ def rotateRight(request, clock):
 
 
 
-def rotateLeft(request, clock):
+def rotate_left(request, clock):
     x, y, theta, health, nb_bullets, nb_bricks, lastshot = request.getState()
     request.stop_thread_if_necessary(health)
 
@@ -790,13 +812,11 @@ def add_wall(request, clock):
         dx = math.cos(theta/180*math.pi) * 50
         dy = -math.sin(theta/180*math.pi) * 50
         request.setState(xpos, ypos, theta, health, nb_bullets, nb_bricks - 1, lastshot)
-        request.addWall(xpos + dx, ypos + dy)
+        request.addWall(xpos + dx, ypos + dy, theta)
     
 
 
 ################################ FIN FONCTION INTERFACE TANKS ############################
-
-
 
 
 
